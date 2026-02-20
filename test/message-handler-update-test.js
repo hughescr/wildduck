@@ -379,6 +379,88 @@ describe('MessageHandler message updates', function () {
         expect(updated).to.equal(1);
     });
 
+    it('adds custom flags with addFlags', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const { handler, user, mailbox, notified, calls } = buildHandler(
+            MessageHandler,
+            update => {
+                expect(update.$addToSet.flags.$each).to.deep.equal(['MyFlag', '$label1']);
+                expect(update.$set.modseq).to.equal(7);
+                expect(update).not.to.have.property('$pull');
+            },
+            { flags: ['\\Seen'] }
+        );
+
+        let updated = await updateAsync(handler, user, mailbox, {
+            addFlags: ['MyFlag', '$label1']
+        });
+
+        expect(updated).to.equal(1);
+        expect(calls.mailboxUpdates).to.equal(1);
+        expect(notified[0].flags).to.deep.equal(['\\Seen', 'MyFlag', '$label1']);
+        expect(notified[0].unseenChange).to.be.false;
+    });
+
+    it('removes custom flags with removeFlags', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const { handler, user, mailbox, notified } = buildHandler(
+            MessageHandler,
+            update => {
+                expect(update.$pull.flags.$in).to.deep.equal(['MyFlag']);
+                expect(update).not.to.have.property('$addToSet');
+            },
+            { flags: ['\\Seen', 'MyFlag', 'Other'] }
+        );
+
+        let updated = await updateAsync(handler, user, mailbox, {
+            removeFlags: ['MyFlag']
+        });
+
+        expect(updated).to.equal(1);
+        expect(notified[0].flags).to.deep.equal(['\\Seen', 'Other']);
+    });
+
+    it('uses one aggregation update when adding and removing custom flags together, keeping a flag listed in both', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const { handler, user, mailbox, notified } = buildHandler(
+            MessageHandler,
+            update => {
+                // $addToSet and $pull on the same path in one update is a MongoDB conflict
+                expect(update).to.be.an('array').with.lengthOf(1);
+                expect(update[0].$set.flags.$setUnion[0].$filter.cond.$not.$in[1]).to.deep.equal({ $literal: ['\\Flagged', 'Old', 'Both'] });
+                expect(update[0].$set.flags.$setUnion[1]).to.deep.equal({ $literal: ['New', 'Both'] });
+            },
+            { flags: ['\\Flagged', 'Old', 'Both'] }
+        );
+
+        let updated = await updateAsync(handler, user, mailbox, {
+            flagged: false,
+            addFlags: ['New', 'Both'],
+            removeFlags: ['Old', 'Both']
+        });
+
+        expect(updated).to.equal(1);
+        expect(notified[0].flags).to.deep.equal(['New', 'Both']);
+        expect(notified[0].flaggedChangedTo).to.be.false;
+    });
+
+    it('treats empty addFlags and removeFlags as nothing to change', async function () {
+        const MessageHandler = require('../lib/message-handler');
+        const { handler, user, mailbox, calls } = buildHandler(MessageHandler);
+
+        let error;
+        try {
+            await updateAsync(handler, user, mailbox, { addFlags: [], removeFlags: [] });
+        } catch (err) {
+            error = err;
+        }
+
+        expect(error).to.exist;
+        expect(error.code).to.equal('NothingChanged');
+        expect(calls.mailboxUpdates).to.equal(0);
+        expect(calls.messageUpdates).to.equal(0);
+    });
+
     it('keeps API labels separate from ordinary IMAP flags in notifications', async function () {
         const MessageHandler = require('../lib/message-handler');
         const { handler, user, mailbox, notified, getLabelRecord } = buildHandler(MessageHandler, () => false, {

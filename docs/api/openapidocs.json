@@ -5646,6 +5646,13 @@
                                                         "type": "boolean",
                                                         "description": "Does this message have a $Forwarded flag"
                                                     },
+                                                    "flags": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "string"
+                                                        },
+                                                        "description": "IMAP flags set on this message, including system flags. Labels are listed in labels"
+                                                    },
                                                     "labels": {
                                                         "type": "array",
                                                         "items": {
@@ -5782,6 +5789,33 @@
                                     "draft": {
                                         "type": "boolean",
                                         "description": "State of the \\Draft flag"
+                                    },
+                                    "addFlags": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 255,
+                                            "pattern": "^[!#$&'+-\\[^-z|}~]+$",
+                                            "not": {
+                                                "pattern": "^\\$[wW][dD][lL][aA][bB][eE][lL]\\$"
+                                            }
+                                        },
+                                        "uniqueItems": true,
+                                        "description": "Custom IMAP flags to add to the messages. A flag listed in both addFlags and removeFlags is kept"
+                                    },
+                                    "removeFlags": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "pattern": "^[^\\\\]",
+                                            "not": {
+                                                "pattern": "^\\$[wW][dD][lL][aA][bB][eE][lL]\\$"
+                                            }
+                                        },
+                                        "uniqueItems": true,
+                                        "description": "Custom IMAP flags to remove from the messages"
                                     },
                                     "expires": {
                                         "anyOf": [
@@ -6060,6 +6094,20 @@
                                         "type": "boolean",
                                         "default": false,
                                         "description": "Is the message a draft or not"
+                                    },
+                                    "flags": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 255,
+                                            "pattern": "^[!#$&'+-\\[^-z|}~]+$",
+                                            "not": {
+                                                "pattern": "^\\$[wW][dD][lL][aA][bB][eE][lL]\\$"
+                                            }
+                                        },
+                                        "uniqueItems": true,
+                                        "description": "Custom IMAP flags to set on the uploaded message"
                                     },
                                     "labels": {
                                         "type": "array",
@@ -6687,6 +6735,16 @@
                     {
                         "schema": {
                             "type": "string",
+                            "minLength": 1
+                        },
+                        "in": "query",
+                        "name": "keyword",
+                        "required": false,
+                        "description": "Search for custom message flags, for example \"MyFlag\" to find messages with MyFlag flag"
+                    },
+                    {
+                        "schema": {
+                            "type": "string",
                             "minLength": 1,
                             "maxLength": 256
                         },
@@ -7063,6 +7121,13 @@
                                                         "type": "boolean",
                                                         "description": "Does this message have a $Forwarded flag"
                                                     },
+                                                    "flags": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "string"
+                                                        },
+                                                        "description": "IMAP flags set on this message, including system flags. Labels are listed in labels"
+                                                    },
                                                     "labels": {
                                                         "type": "array",
                                                         "items": {
@@ -7264,6 +7329,11 @@
                                     "seen": {
                                         "type": "boolean",
                                         "description": "If true, then matches only messages with \\Seen flags"
+                                    },
+                                    "keyword": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "Search for custom message flags, for example \"MyFlag\" to find messages with MyFlag flag"
                                     },
                                     "label": {
                                         "type": "string",
@@ -7763,6 +7833,13 @@
                                             "type": "boolean",
                                             "description": "Does this message have a Draft flag"
                                         },
+                                        "flags": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            },
+                                            "description": "IMAP flags set on this message, including system flags. Labels are listed in labels"
+                                        },
                                         "html": {
                                             "type": "array",
                                             "items": {
@@ -8075,6 +8152,33 @@
                                     "draft": {
                                         "type": "boolean",
                                         "description": "State of the \\Draft flag"
+                                    },
+                                    "addFlags": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 255,
+                                            "pattern": "^[!#$&'+-\\[^-z|}~]+$",
+                                            "not": {
+                                                "pattern": "^\\$[wW][dD][lL][aA][bB][eE][lL]\\$"
+                                            }
+                                        },
+                                        "uniqueItems": true,
+                                        "description": "Custom IMAP flags to add to the message. A flag listed in both addFlags and removeFlags is kept"
+                                    },
+                                    "removeFlags": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "pattern": "^[^\\\\]",
+                                            "not": {
+                                                "pattern": "^\\$[wW][dD][lL][aA][bB][eE][lL]\\$"
+                                            }
+                                        },
+                                        "uniqueItems": true,
+                                        "description": "Custom IMAP flags to remove from the message"
                                     },
                                     "expires": {
                                         "anyOf": [
@@ -9276,6 +9380,13 @@
                                                     "forwarded": {
                                                         "type": "boolean",
                                                         "description": "Does this message have a $Forwarded flag"
+                                                    },
+                                                    "flags": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "string"
+                                                        },
+                                                        "description": "IMAP flags set on this message, including system flags. Labels are listed in labels"
                                                     },
                                                     "labels": {
                                                         "type": "array",

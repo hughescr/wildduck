@@ -439,3 +439,101 @@ describe('moveAsync label counter notifications', function () {
         expect(targetEntries[1].labels).to.deep.equal(['Projects/later']);
     });
 });
+
+describe('moveAsync custom flag updates', function () {
+    it('applies removeFlags and then addFlags to the moved copy', async function () {
+        const user = new ObjectId();
+        const sourceMailbox = new ObjectId();
+        const targetMailbox = new ObjectId();
+        const message = {
+            _id: new ObjectId(),
+            mailbox: sourceMailbox,
+            user,
+            uid: 1,
+            size: 10,
+            unseen: false,
+            flags: ['\\Seen', 'Old', 'Both', 'Kept'],
+            labels: [],
+            mimeTree: { attachmentMap: {} },
+            idate: new Date()
+        };
+        const inserted = [];
+        let served = false;
+
+        const handler = Object.create(MessageHandler.prototype);
+        handler.loggelf = () => {};
+        handler.database = {
+            collection(name) {
+                if (name === 'mailboxes') {
+                    return {
+                        async findOne(query) {
+                            if (query._id.equals(sourceMailbox)) {
+                                return { _id: sourceMailbox, user, path: 'INBOX', uidValidity: 1 };
+                            }
+                            return { _id: targetMailbox, user, path: 'Archive', uidValidity: 2 };
+                        },
+                        async findOneAndUpdate(query) {
+                            if (query._id.equals(sourceMailbox)) {
+                                return { value: { modifyIndex: 3 } };
+                            }
+                            return { value: { uidNext: 10, modifyIndex: 4 } };
+                        }
+                    };
+                }
+                if (name === 'messages') {
+                    return {
+                        find() {
+                            return {
+                                sort() {
+                                    return {
+                                        async next() {
+                                            if (served) {
+                                                return null;
+                                            }
+                                            served = true;
+                                            return message;
+                                        },
+                                        async close() {}
+                                    };
+                                }
+                            };
+                        },
+                        async insertOne(doc) {
+                            inserted.push(doc);
+                            return { acknowledged: true, insertedId: new ObjectId() };
+                        },
+                        async deleteOne() {
+                            return { deletedCount: 1 };
+                        }
+                    };
+                }
+                throw new Error(`Unexpected collection ${name}`);
+            }
+        };
+        handler.users = {
+            collection() {
+                return {
+                    async findOne() {
+                        return { _id: user };
+                    }
+                };
+            }
+        };
+        handler.settingsHandler = { get: async () => 100 };
+        handler.notifier = {
+            async addEntriesAsync() {},
+            fire() {}
+        };
+
+        await handler.moveAsync({
+            source: { mailbox: sourceMailbox },
+            destination: { mailbox: targetMailbox },
+            messages: [1],
+            updates: { addFlags: ['New', 'Both'], removeFlags: ['Old', 'Both'] }
+        });
+
+        expect(inserted).to.have.lengthOf(1);
+        expect(inserted[0].flags).to.deep.equal(['\\Seen', 'Kept', 'New', 'Both']);
+        expect(inserted[0].unseen).to.be.false;
+    });
+});

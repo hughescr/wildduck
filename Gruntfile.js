@@ -58,6 +58,7 @@ module.exports = function (grunt) {
         'test/label-delete-task-test.js',
         'test/list-headers-test.js',
         'test/maildropper-test.js',
+        'test/message-custom-flags-test.js',
         'test/message-handler-update-test.js',
         'test/message-search-label-test.js',
         'test/message-search-timeout-test.js',
