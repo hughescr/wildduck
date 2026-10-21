@@ -52,7 +52,9 @@ describe('MessageHandler message updates', function () {
         let calls = {
             mailboxFinds: 0,
             mailboxUpdates: 0,
-            messageUpdates: 0
+            messageUpdates: 0,
+            labelLookups: 0,
+            labelInserts: 0
         };
         const atomicFlags = messageOverrides?.atomicFlags ?? messageOverrides?.flags ?? [];
         const labelRecords = new Map();
@@ -190,7 +192,12 @@ describe('MessageHandler message updates', function () {
                         };
 
                     case 'labels':
+                        calls.labelLookups++;
                         return {
+                            async insertOne() {
+                                calls.labelInserts++;
+                                return { acknowledged: true, insertedId: new ObjectId() };
+                            },
                             find(query) {
                                 const names = query.name?.$in;
                                 const records = names
@@ -577,6 +584,38 @@ describe('MessageHandler message updates', function () {
                 expect(calls.mailboxUpdates).to.equal(0);
                 expect(calls.messageUpdates).to.equal(0);
             }
+        });
+
+        it('rejects contradictions before creating labels or touching the labels collection', async function () {
+            const contradictions = [
+                { addLabels: ['NewLabel'], addFlags: ['\\Seen'], seen: false },
+                { labels: ['NewLabel'], removeFlags: ['\\Flagged'], flagged: true },
+                { addLabels: ['NewLabel'], addFlags: ['\\Seen'], removeFlags: ['\\Seen'] }
+            ];
+
+            for (const changes of contradictions) {
+                const { handler, user, mailbox, calls } = buildHandler(MessageHandler);
+                let error;
+                try {
+                    await updateAsync(handler, user, mailbox, changes);
+                } catch (err) {
+                    error = err;
+                }
+
+                expect(error, JSON.stringify(changes)).to.exist;
+                expect(error.code).to.equal('InputValidationError');
+                expect(calls.labelInserts).to.equal(0);
+                expect(calls.labelLookups).to.equal(0);
+                expect(calls.mailboxUpdates).to.equal(0);
+                expect(calls.messageUpdates).to.equal(0);
+            }
+        });
+
+        it('still creates labels when system flags agree with the explicit field', async function () {
+            const { handler, user, mailbox, calls } = buildHandler(MessageHandler, () => {}, { flags: [] });
+            await updateAsync(handler, user, mailbox, { addLabels: ['NewLabel'], addFlags: ['\\Seen'], seen: true });
+            expect(calls.labelLookups).to.be.greaterThan(0);
+            expect(calls.messageUpdates).to.equal(1);
         });
     });
 

@@ -607,4 +607,17 @@ describe('moveAsync custom flag updates', function () {
         expect(error.responseCode).to.equal(400);
         expect(error.code).to.equal('InputValidationError');
     });
+
+    it('refuses a contradicting move before touching the labels collection', async function () {
+        // runMove throws on any collection it does not mock, labels included, so reaching label creation would
+        // surface as an "Unexpected collection" error instead of the validation error
+        let error;
+        try {
+            await runMove({}, { addLabels: ['NewLabel'], addFlags: ['\\Seen'], seen: false });
+        } catch (err) {
+            error = err;
+        }
+        expect(error).to.exist;
+        expect(error.code).to.equal('InputValidationError');
+    });
 });
