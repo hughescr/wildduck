@@ -441,7 +441,8 @@ describe('moveAsync label counter notifications', function () {
 });
 
 describe('moveAsync custom flag updates', function () {
-    it('applies removeFlags and then addFlags to the moved copy', async function () {
+    // moves one message with the given stored fields and returns the stored copy and the notification entries
+    async function runMove(messageFields, updates) {
         const user = new ObjectId();
         const sourceMailbox = new ObjectId();
         const targetMailbox = new ObjectId();
@@ -452,12 +453,17 @@ describe('moveAsync custom flag updates', function () {
             uid: 1,
             size: 10,
             unseen: false,
+            undeleted: true,
+            flagged: false,
+            draft: false,
             flags: ['\\Seen', 'Old', 'Both', 'Kept'],
             labels: [],
             mimeTree: { attachmentMap: {} },
-            idate: new Date()
+            idate: new Date(),
+            ...messageFields
         };
         const inserted = [];
+        const entries = [];
         let served = false;
 
         const handler = Object.create(MessageHandler.prototype);
@@ -521,7 +527,9 @@ describe('moveAsync custom flag updates', function () {
         };
         handler.settingsHandler = { get: async () => 100 };
         handler.notifier = {
-            async addEntriesAsync() {},
+            async addEntriesAsync(mailbox, added) {
+                entries.push(...added);
+            },
             fire() {}
         };
 
@@ -529,11 +537,74 @@ describe('moveAsync custom flag updates', function () {
             source: { mailbox: sourceMailbox },
             destination: { mailbox: targetMailbox },
             messages: [1],
-            updates: { addFlags: ['New', 'Both'], removeFlags: ['Old', 'Both'] }
+            updates
         });
 
         expect(inserted).to.have.lengthOf(1);
-        expect(inserted[0].flags).to.deep.equal(['\\Seen', 'Kept', 'New', 'Both']);
-        expect(inserted[0].unseen).to.be.false;
+        return { stored: inserted[0], entries };
+    }
+
+    it('applies removeFlags and then addFlags to the moved copy', async function () {
+        const { stored } = await runMove({}, { addFlags: ['New', 'Both'], removeFlags: ['Old', 'Both'] });
+
+        expect(stored.flags).to.deep.equal(['\\Seen', 'Kept', 'New', 'Both']);
+        expect(stored.unseen).to.be.false;
+    });
+
+    it('moves with addFlags \\Seen the way seen=true does, keeping the derived field in sync', async function () {
+        const viaFlags = await runMove({ unseen: true, flags: [] }, { addFlags: ['\\Seen', 'MyFlag'] });
+        const viaField = await runMove({ unseen: true, flags: [] }, { seen: true, addFlags: ['MyFlag'] });
+
+        expect(viaFlags.stored.unseen).to.be.false;
+        expect(viaFlags.stored.flags).to.deep.equal(['\\Seen', 'MyFlag']);
+        expect(viaFlags.stored.flags).to.deep.equal(viaField.stored.flags);
+        expect(viaFlags.stored.unseen).to.equal(viaField.stored.unseen);
+        // the notification entries carry the same unseen counter inputs
+        expect(viaFlags.entries.map(entry => [entry.command, entry.unseen])).to.deep.equal(viaField.entries.map(entry => [entry.command, entry.unseen]));
+    });
+
+    it('moves with removeFlags \\Seen the way seen=false does', async function () {
+        const { stored } = await runMove({ unseen: false, flags: ['\\Seen', 'Kept'] }, { removeFlags: ['\\Seen'] });
+
+        expect(stored.unseen).to.be.true;
+        expect(stored.flags).to.deep.equal(['Kept']);
+    });
+
+    it('moves with \\Flagged, \\Draft and \\Deleted keeping flagged, draft and undeleted in sync', async function () {
+        const added = (await runMove({ flags: [] }, { addFlags: ['\\Flagged', '\\Draft', '\\Deleted'] })).stored;
+        expect(added.flags).to.have.members(['\\Flagged', '\\Draft', '\\Deleted']);
+        expect(added.flagged).to.be.true;
+        expect(added.draft).to.be.true;
+        expect(added.undeleted).to.be.false;
+
+        const removed = (
+            await runMove(
+                { flags: ['\\Flagged', '\\Draft', '\\Deleted'], flagged: true, draft: true, undeleted: false },
+                { removeFlags: ['\\Flagged', '\\Draft', '\\Deleted'] }
+            )
+        ).stored;
+        expect(removed.flags).to.deep.equal([]);
+        expect(removed.flagged).to.be.false;
+        expect(removed.draft).to.be.false;
+        expect(removed.undeleted).to.be.true;
+    });
+
+    it('stores \\Answered as a plain flag when moving', async function () {
+        const { stored } = await runMove({ flags: ['\\Seen'] }, { addFlags: ['\\Answered'] });
+
+        expect(stored.flags).to.deep.equal(['\\Seen', '\\Answered']);
+        expect(stored.unseen).to.be.false;
+    });
+
+    it('refuses to move with a contradicting system flag and field', async function () {
+        let error;
+        try {
+            await runMove({}, { addFlags: ['\\Seen'], seen: false });
+        } catch (err) {
+            error = err;
+        }
+        expect(error).to.exist;
+        expect(error.responseCode).to.equal(400);
+        expect(error.code).to.equal('InputValidationError');
     });
 });

@@ -444,6 +444,142 @@ describe('MessageHandler message updates', function () {
         expect(notified[0].flaggedChangedTo).to.be.false;
     });
 
+    describe('system flags in addFlags and removeFlags', function () {
+        const MessageHandler = require('../lib/message-handler');
+
+        // runs an update and returns what was written to the message and notified
+        async function run(changes, messageOverrides) {
+            let written;
+            const built = buildHandler(
+                MessageHandler,
+                update => {
+                    written = update;
+                },
+                messageOverrides
+            );
+            const updated = await updateAsync(built.handler, built.user, built.mailbox, changes);
+            return { ...built, updated, written };
+        }
+
+        it('marks a message seen with addFlags \\Seen the way seen=true does', async function () {
+            const viaFlags = await run({ addFlags: ['\\Seen'] }, { flags: [] });
+            const viaField = await run({ seen: true }, { flags: [] });
+
+            expect(viaFlags.updated).to.equal(1);
+            expect(viaFlags.written).to.deep.equal(viaField.written);
+            // derived field, flag and a new modseq are written together
+            expect(viaFlags.written.$set.unseen).to.be.false;
+            expect(viaFlags.written.$set.modseq).to.equal(7);
+            expect(viaFlags.written.$addToSet.flags.$each).to.deep.equal(['\\Seen']);
+            // the mailbox gets its modseq and the unseen counter is adjusted from the notification
+            expect(viaFlags.calls.mailboxUpdates).to.equal(1);
+            expect(viaFlags.notified).to.have.lengthOf(1);
+            expect(viaFlags.notified[0].unseenChange).to.be.true;
+            expect(viaFlags.notified[0].flags).to.deep.equal(['\\Seen']);
+            expect(viaFlags.notified[0].unseenChange).to.equal(viaField.notified[0].unseenChange);
+            expect(viaFlags.notified[0].flags).to.deep.equal(viaField.notified[0].flags);
+        });
+
+        it('marks a message unseen with removeFlags \\Seen the way seen=false does', async function () {
+            const viaFlags = await run({ removeFlags: ['\\Seen'] }, { flags: ['\\Seen', 'Keep'] });
+            const viaField = await run({ seen: false }, { flags: ['\\Seen', 'Keep'] });
+
+            expect(viaFlags.written).to.deep.equal(viaField.written);
+            expect(viaFlags.written.$set.unseen).to.be.true;
+            expect(viaFlags.written.$pull.flags.$in).to.deep.equal(['\\Seen']);
+            expect(viaFlags.written).not.to.have.property('$addToSet');
+            expect(viaFlags.notified[0].unseenChange).to.be.true;
+            expect(viaFlags.notified[0].flags).to.deep.equal(['Keep']);
+        });
+
+        it('maps every field backed system flag to its field in both lists', async function () {
+            const cases = [
+                ['\\Seen', 'unseen', add => !add],
+                ['\\Flagged', 'flagged', add => add],
+                ['\\Draft', 'draft', add => add],
+                ['\\Deleted', 'undeleted', add => !add]
+            ];
+
+            for (const [flag, derived, expected] of cases) {
+                for (const add of [true, false]) {
+                    const { written } = await run(add ? { addFlags: [flag] } : { removeFlags: [flag] }, { flags: add ? [] : [flag] });
+                    expect(written.$set[derived], `${add ? 'add' : 'remove'} ${flag}`).to.equal(expected(add));
+                    expect(add ? written.$addToSet.flags.$each : written.$pull.flags.$in).to.deep.equal([flag]);
+                }
+            }
+        });
+
+        it('accepts the system flags in any letter case', async function () {
+            const { written } = await run({ addFlags: ['\\seen', '\\FLAGGED'] }, { flags: [] });
+
+            expect(written.$set.unseen).to.be.false;
+            expect(written.$set.flagged).to.be.true;
+            expect(written.$addToSet.flags.$each).to.have.members(['\\Seen', '\\Flagged']);
+        });
+
+        it('handles system flags mixed with custom flags in one update', async function () {
+            const { written, notified } = await run({ addFlags: ['\\Seen', 'MyFlag'], removeFlags: ['\\Flagged', 'Old'] }, { flags: ['\\Flagged', 'Old'] });
+
+            // adding and removing in one update needs the aggregation form
+            expect(written).to.be.an('array').with.lengthOf(1);
+            expect(written[0].$set.unseen).to.deep.equal({ $literal: false });
+            expect(written[0].$set.flagged).to.deep.equal({ $literal: false });
+            expect(written[0].$set.flags.$setUnion[0].$filter.cond.$not.$in[1].$literal).to.have.members(['\\Flagged', 'Old']);
+            expect(written[0].$set.flags.$setUnion[1].$literal).to.have.members(['\\Seen', 'MyFlag']);
+            expect(notified[0].flags).to.have.members(['\\Seen', 'MyFlag']);
+            expect(notified[0].unseenChange).to.be.true;
+            expect(notified[0].flaggedChangedTo).to.be.false;
+        });
+
+        it('stores \\Answered as a plain flag without touching derived fields', async function () {
+            const { written, notified } = await run({ addFlags: ['\\Answered'] }, { flags: ['\\Seen'] });
+
+            expect(written.$addToSet.flags.$each).to.deep.equal(['\\Answered']);
+            expect(written.$set).to.have.all.keys('modseq');
+            expect(notified[0].unseenChange).to.be.false;
+
+            const removal = await run({ removeFlags: ['\\Answered'] }, { flags: ['\\Answered'] });
+            expect(removal.written.$pull.flags.$in).to.deep.equal(['\\Answered']);
+            expect(removal.written.$set).to.have.all.keys('modseq');
+        });
+
+        it('accepts a system flag that agrees with the explicit field', async function () {
+            const { written } = await run({ addFlags: ['\\Seen'], seen: true }, { flags: [] });
+
+            expect(written.$set.unseen).to.be.false;
+            expect(written.$addToSet.flags.$each).to.deep.equal(['\\Seen']);
+        });
+
+        it('rejects contradictions before anything is written', async function () {
+            const contradictions = [
+                { addFlags: ['\\Seen'], seen: false },
+                { removeFlags: ['\\Seen'], seen: true },
+                { addFlags: ['\\Flagged'], flagged: false },
+                { removeFlags: ['\\Draft'], draft: true },
+                { addFlags: ['\\Deleted'], deleted: false },
+                { addFlags: ['\\Seen'], removeFlags: ['\\Seen'] },
+                { addFlags: ['\\seen'], removeFlags: ['\\SEEN'] },
+                { addFlags: ['\\Deleted'], removeFlags: ['\\Deleted'] }
+            ];
+
+            for (const changes of contradictions) {
+                const { handler, user, mailbox, calls } = buildHandler(MessageHandler);
+                let error;
+                try {
+                    await updateAsync(handler, user, mailbox, changes);
+                } catch (err) {
+                    error = err;
+                }
+
+                expect(error, JSON.stringify(changes)).to.exist;
+                expect(error.responseCode).to.equal(400);
+                expect(error.code).to.equal('InputValidationError');
+                expect(calls.mailboxUpdates).to.equal(0);
+                expect(calls.messageUpdates).to.equal(0);
+            }
+        });
+    });
+
     it('treats empty addFlags and removeFlags as nothing to change', async function () {
         const MessageHandler = require('../lib/message-handler');
         const { handler, user, mailbox, calls } = buildHandler(MessageHandler);

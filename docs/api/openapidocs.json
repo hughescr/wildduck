@@ -5796,26 +5796,26 @@
                                             "type": "string",
                                             "minLength": 1,
                                             "maxLength": 255,
-                                            "pattern": "^[!#$&'+-\\[^-z|}~]+$",
+                                            "pattern": "^(?:[!#$&'+-\\[^-z|}~]+|\\\\(?:[Ss][Ee][Ee][Nn]|[Ff][Ll][Aa][Gg][Gg][Ee][Dd]|[Dd][Rr][Aa][Ff][Tt]|[Dd][Ee][Ll][Ee][Tt][Ee][Dd]|[Aa][Nn][Ss][Ww][Ee][Rr][Ee][Dd]))$",
                                             "not": {
                                                 "pattern": "^\\$[wW][dD][lL][aA][bB][eE][lL]\\$"
                                             }
                                         },
                                         "uniqueItems": true,
-                                        "description": "Custom IMAP flags to add to the messages. A flag listed in both addFlags and removeFlags is kept"
+                                        "description": "IMAP flags to add to the messages: custom keywords, or the system flags \\Seen, \\Flagged, \\Draft, \\Deleted and \\Answered. \\Seen, \\Flagged, \\Draft and \\Deleted are the same as setting seen, flagged, draft and deleted to true: they are handled the same way and a request that contradicts them, or lists them in both addFlags and removeFlags, fails with a 400 error. \\Answered is stored as a plain flag. Other system flags such as \\Recent are not accepted. A custom keyword listed in both addFlags and removeFlags is kept"
                                     },
                                     "removeFlags": {
                                         "type": "array",
                                         "items": {
                                             "type": "string",
                                             "minLength": 1,
-                                            "pattern": "^[^\\\\]",
+                                            "pattern": "^(?:[^\\\\]|\\\\(?:[Ss][Ee][Ee][Nn]|[Ff][Ll][Aa][Gg][Gg][Ee][Dd]|[Dd][Rr][Aa][Ff][Tt]|[Dd][Ee][Ll][Ee][Tt][Ee][Dd]|[Aa][Nn][Ss][Ww][Ee][Rr][Ee][Dd])$)",
                                             "not": {
                                                 "pattern": "^\\$[wW][dD][lL][aA][bB][eE][lL]\\$"
                                             }
                                         },
                                         "uniqueItems": true,
-                                        "description": "Custom IMAP flags to remove from the messages"
+                                        "description": "IMAP flags to remove from the messages: custom keywords, or the system flags \\Seen, \\Flagged, \\Draft, \\Deleted and \\Answered. \\Seen, \\Flagged, \\Draft and \\Deleted are the same as setting seen, flagged, draft and deleted to false. Other system flags such as \\Recent are not accepted"
                                     },
                                     "expires": {
                                         "anyOf": [
@@ -6101,13 +6101,13 @@
                                             "type": "string",
                                             "minLength": 1,
                                             "maxLength": 255,
-                                            "pattern": "^[!#$&'+-\\[^-z|}~]+$",
+                                            "pattern": "^(?:[!#$&'+-\\[^-z|}~]+|\\\\(?:[Ss][Ee][Ee][Nn]|[Ff][Ll][Aa][Gg][Gg][Ee][Dd]|[Dd][Rr][Aa][Ff][Tt]|[Dd][Ee][Ll][Ee][Tt][Ee][Dd]|[Aa][Nn][Ss][Ww][Ee][Rr][Ee][Dd]))$",
                                             "not": {
                                                 "pattern": "^\\$[wW][dD][lL][aA][bB][eE][lL]\\$"
                                             }
                                         },
                                         "uniqueItems": true,
-                                        "description": "Custom IMAP flags to set on the uploaded message"
+                                        "description": "IMAP flags to set on the uploaded message: custom keywords, or the system flags \\Seen, \\Flagged, \\Draft, \\Deleted and \\Answered. \\Seen, \\Flagged and \\Draft are the same as unseen=false, flagged=true and draft=true and fail with a 400 error if the request sets the contradicting value. \\Deleted is applied the way IMAP APPEND applies it. Other system flags such as \\Recent are not accepted"
                                     },
                                     "labels": {
                                         "type": "array",
@@ -8159,26 +8159,26 @@
                                             "type": "string",
                                             "minLength": 1,
                                             "maxLength": 255,
-                                            "pattern": "^[!#$&'+-\\[^-z|}~]+$",
+                                            "pattern": "^(?:[!#$&'+-\\[^-z|}~]+|\\\\(?:[Ss][Ee][Ee][Nn]|[Ff][Ll][Aa][Gg][Gg][Ee][Dd]|[Dd][Rr][Aa][Ff][Tt]|[Dd][Ee][Ll][Ee][Tt][Ee][Dd]|[Aa][Nn][Ss][Ww][Ee][Rr][Ee][Dd]))$",
                                             "not": {
                                                 "pattern": "^\\$[wW][dD][lL][aA][bB][eE][lL]\\$"
                                             }
                                         },
                                         "uniqueItems": true,
-                                        "description": "Custom IMAP flags to add to the message. A flag listed in both addFlags and removeFlags is kept"
+                                        "description": "IMAP flags to add to the message: custom keywords, or the system flags \\Seen, \\Flagged, \\Draft, \\Deleted and \\Answered. \\Seen, \\Flagged, \\Draft and \\Deleted are the same as setting seen, flagged, draft and deleted to true: they are handled the same way and a request that contradicts them, or lists them in both addFlags and removeFlags, fails with a 400 error. \\Answered is stored as a plain flag. Other system flags such as \\Recent are not accepted. A custom keyword listed in both addFlags and removeFlags is kept"
                                     },
                                     "removeFlags": {
                                         "type": "array",
                                         "items": {
                                             "type": "string",
                                             "minLength": 1,
-                                            "pattern": "^[^\\\\]",
+                                            "pattern": "^(?:[^\\\\]|\\\\(?:[Ss][Ee][Ee][Nn]|[Ff][Ll][Aa][Gg][Gg][Ee][Dd]|[Dd][Rr][Aa][Ff][Tt]|[Dd][Ee][Ll][Ee][Tt][Ee][Dd]|[Aa][Nn][Ss][Ww][Ee][Rr][Ee][Dd])$)",
                                             "not": {
                                                 "pattern": "^\\$[wW][dD][lL][aA][bB][eE][lL]\\$"
                                             }
                                         },
                                         "uniqueItems": true,
-                                        "description": "Custom IMAP flags to remove from the message"
+                                        "description": "IMAP flags to remove from the message: custom keywords, or the system flags \\Seen, \\Flagged, \\Draft, \\Deleted and \\Answered. \\Seen, \\Flagged, \\Draft and \\Deleted are the same as setting seen, flagged, draft and deleted to false. Other system flags such as \\Recent are not accepted"
                                     },
                                     "expires": {
                                         "anyOf": [
