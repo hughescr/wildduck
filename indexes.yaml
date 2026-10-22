@@ -326,6 +326,15 @@ indexes:
 
     - collection: messages
       index:
+          # backs the API keyword search (filter.flags without a mailbox), which
+          # otherwise scans every message the user has across all mailboxes
+          name: user_flags
+          key:
+              user: 1
+              flags: 1
+
+    - collection: messages
+      index:
           name: mailbox_labels
           key:
               mailbox: 1
