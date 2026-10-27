@@ -303,6 +303,16 @@ indexes:
 
     - collection: messages
       index:
+          # Covers IMAP UID/modseq searches and their projection with the implicit _id key.
+          name: mailbox_uid_modseq_cover
+          key:
+              mailbox: 1
+              uid: 1
+              _id: 1
+              modseq: 1
+
+    - collection: messages
+      index:
           name: mailbox_uid_reverse
           key:
               mailbox: 1
