@@ -283,6 +283,14 @@ indexes:
 
     - collection: messages
       index:
+          name: user_idate_id_reverse
+          key:
+              user: 1
+              idate: -1
+              _id: -1
+
+    - collection: messages
+      index:
           # Queue IDs are selective, so keep this index to one key and exclude ordinary received messages.
           # The matching document provides mailbox and uid for the shard-targeted notified update.
           name: outbound_message
