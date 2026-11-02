@@ -4,6 +4,7 @@
 
 ### Features
 
+* **attachments-s3:** Add optional per-worker GridFS verification pacing with `--read-mibps` in the S3 migration helper.
 * **messages-search:** Add the optional `includeTotal` query parameter to GET message searches. Setting it to `false` skips the total count and omits `total` from the response, including when collapsing threads. The default remains `true`.
 
 ## [1.55.3](https://github.com/zone-eu/wildduck/compare/v1.55.2...v1.55.3) (2026-11-02)

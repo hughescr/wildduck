@@ -46,6 +46,7 @@ Deploy backend-aware code to every API, IMAP, POP3, LMTP, and task process befor
 NODE_ENV=production node scripts/migrate-attachments-to-s3.js --dry-run --prefix=00 --limit=100
 NODE_ENV=production node scripts/migrate-attachments-to-s3.js --migrate --prefix=00 --concurrency=2 --throttle-ms=50
 NODE_ENV=production node scripts/migrate-attachments-to-s3.js --verify-only --prefix=00
+NODE_ENV=production node scripts/migrate-attachments-to-s3.js --verify-only --prefix=00 --concurrency=1 --read-mibps=8
 NODE_ENV=production node scripts/migrate-attachments-to-s3.js --cleanup-chunks --yes --prefix=00 --grace-hours=24
 NODE_ENV=production node scripts/migrate-attachments-to-s3.js --cleanup-unreferenced-s3 --yes --prefix=00 --grace-hours=24
 ```
@@ -57,6 +58,8 @@ Run every prefix from `00` through `ff`, or omit `--prefix` to scan all attachme
 The CLI also accepts `--gridfs-bucket`, `--s3-bucket`, `--s3-prefix`, and `--s3-endpoint` for a specifically targeted run. Review those overrides carefully before using `--cleanup-chunks`. Progress and failures are printed to stdout and stderr. A failed entry makes the process exit nonzero. Re-run after resolving failures. An incomplete migration is supported: WildDuck continues to read both backends.
 
 The script lists attachment ids in pages of `--batch` (default 1000) rather than holding one cursor open for the whole run, which a server would time out on a large store, and it always waits for uploads and cutovers in progress before it exits, also after a failure. Value options accept both `--prefix=00` and `--prefix 00`. Unknown, duplicate or missing arguments are rejected before connecting to storage. Verification checks the S3 locator using the same rules as message readers, and requires a recorded payload checksum or retained GridFS chunks. If neither exists, the entry fails verification. When cleanup verifies against GridFS without a recorded checksum, it saves the established checksum before deleting the chunks so future verification remains possible.
+
+`--read-mibps=N` optionally paces retained GridFS reads in `--verify-only` and `--cleanup-chunks`, in MiB per second (1 MiB = 1,048,576 bytes). It accepts finite nonnegative rates, including fractions; the default `0` disables pacing. Each worker reads a whole payload without pausing its GridFS cursor, releases the attachment lock, then waits for the measured bytes and elapsed read/cleanup time to meet the requested average rate. Reads can therefore burst above that rate, and concurrent workers can together average up to `--concurrency` times the rate. Use `--concurrency=1` for a single-worker budget. This option does not pace S3 reads, the hash/upload reads in `--migrate`, or failed entries. `--throttle-ms` independently adds a fixed delay between starting entries.
 
 ## Returning completely to GridFS
 

@@ -14,6 +14,7 @@ const valueNames = new Set([
     'batch',
     'concurrency',
     'throttle-ms',
+    'read-mibps',
     'grace-hours',
     'gridfs-bucket',
     's3-bucket',
@@ -52,6 +53,8 @@ const limit = Number(values.limit || 0);
 const batch = Number(values.batch || 1000);
 const concurrency = Number(values.concurrency || 2);
 const throttleMs = Number(values['throttle-ms'] || 0);
+const readMiBps = Number(values['read-mibps'] || 0);
+const readBytesPerSecond = readMiBps * 1024 * 1024;
 const graceHours = Number(values['grace-hours'] || 24);
 const prefix = values.prefix || '';
 const s3Config = {
@@ -75,6 +78,9 @@ if (
     concurrency > 32 ||
     !Number.isInteger(throttleMs) ||
     throttleMs < 0 ||
+    !Number.isFinite(readMiBps) ||
+    readMiBps < 0 ||
+    !Number.isFinite(readBytesPerSecond) ||
     !Number.isFinite(graceHours) ||
     graceHours < 0 ||
     !/^[0-9a-f]{0,4}$/.test(prefix)
@@ -83,7 +89,7 @@ if (
         process.stderr.write(`${argumentError}\n`);
     }
     process.stderr.write(
-        'Usage: node scripts/migrate-attachments-to-s3.js (--dry-run|--migrate|--verify-only|--cleanup-chunks --yes|--cleanup-unreferenced-s3 --yes) [--prefix=0..ffff] [--limit=N] [--batch=1..10000] [--concurrency=1..32] [--throttle-ms=N] [--grace-hours=N] [--gridfs-bucket=NAME] [--s3-bucket=NAME --s3-prefix=NAME --s3-endpoint=URL]\n'
+        'Usage: node scripts/migrate-attachments-to-s3.js (--dry-run|--migrate|--verify-only|--cleanup-chunks --yes|--cleanup-unreferenced-s3 --yes) [--prefix=0..ffff] [--limit=N] [--batch=1..10000] [--concurrency=1..32] [--throttle-ms=N] [--read-mibps=N] [--grace-hours=N] [--gridfs-bucket=NAME] [--s3-bucket=NAME --s3-prefix=NAME --s3-endpoint=URL]\n'
     );
     process.exit(2);
 }
@@ -98,6 +104,22 @@ async function hashStream(stream) {
         length += chunk.length;
     }
     return { length, checksum: hash.digest() };
+}
+
+async function paceRead(startedAt, bytes) {
+    if (!readBytesPerSecond || startedAt === undefined || !bytes) {
+        return;
+    }
+    // GridFS cursors can be closed by MongoDB when their consumer deliberately
+    // stalls between chunks. Read one payload without interruption, then rest
+    // long enough to keep the average source-read rate at the requested limit.
+    const targetMilliseconds = (bytes / readBytesPerSecond) * 1000;
+    let remainingMilliseconds = targetMilliseconds - Number(process.hrtime.bigint() - startedAt) / 1e6;
+    while (remainingMilliseconds > 0) {
+        // Node turns delays above its signed 32-bit timer limit into 1ms waits.
+        await new Promise(resolve => setTimeout(resolve, Math.min(remainingMilliseconds, 2147483647)));
+        remainingMilliseconds = targetMilliseconds - Number(process.hrtime.bigint() - startedAt) / 1e6;
+    }
 }
 
 async function main() {
@@ -180,6 +202,8 @@ async function main() {
             stats.skipped++;
             return;
         }
+        let sourceReadStartedAt;
+        let sourceReadBytes = 0;
         await lock.run(id, async assertOwned => {
             const current = await files.findOne({ _id: id });
             if (!current) {
@@ -250,7 +274,9 @@ async function main() {
                 throw new Error(`S3 payload mismatch for ${hex}`);
             }
             if (sourceChunk) {
+                sourceReadStartedAt = process.hrtime.bigint();
                 const source = await hashStream(bucket.openDownloadStream(id));
+                sourceReadBytes = source.length;
                 if (source.length !== destination.length || !source.checksum.equals(destination.checksum)) {
                     throw new Error(`GridFS and S3 differ for ${hex}`);
                 }
@@ -274,6 +300,7 @@ async function main() {
                 stats.cleaned++;
             }
         });
+        await paceRead(sourceReadStartedAt, sourceReadBytes);
     }
 
     const active = new Set();
